@@ -259,6 +259,7 @@
             let currentUsername = null;
             let encryptionReady = false;
             let processedMessageIds = new Set(); // Track processed message IDs to prevent duplicates
+            let userInitialized = false; // Flag to track if user data has been initialized
             
             // Initialize encryption
             const encryption = new ChatEncryption();
@@ -350,40 +351,76 @@
             // Set username
             usernameSubmit.addEventListener('click', () => {
                 const username = usernameInput.value.trim();
-                if (username) {
-                    fetch('/set_username', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ username }),
-                        credentials: 'same-origin'
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            usernameModal.style.display = 'none';
-                            currentUsername = username;
-                            console.log('Username changed successfully');
-                        } else {
-                            console.error('Failed to change username');
+                if (!username) return;
+                
+                // Wait for user initialization if needed
+                if (!currentUserId) {
+                    addSystemMessage("Please wait a moment while we connect to the server...");
+                    
+                    const checkInterval = setInterval(() => {
+                        if (currentUserId) {
+                            clearInterval(checkInterval);
+                            submitUsername(username);
                         }
-                    })
-                    .catch(error => console.error('Error setting username:', error));
+                    }, 500);
+                    
+                    // Set a timeout in case the user ID never comes
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        if (!currentUserId) {
+                            addSystemMessage("Could not connect to the server. Please refresh the page and try again.");
+                        }
+                    }, 10000); // 10 second timeout
+                } else {
+                    submitUsername(username);
                 }
             });
             
+            // Function to submit username to server
+            function submitUsername(username) {
+                fetch('/set_username', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username }),
+                    credentials: 'same-origin'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        usernameModal.style.display = 'none';
+                        currentUsername = username;
+                        console.log('Username changed successfully to', username);
+                        addSystemMessage(`Your username has been set to "${username}"`);
+                    } else {
+                        console.error('Failed to change username');
+                        addSystemMessage("Failed to change username. Please try again.");
+                    }
+                })
+                .catch(error => {
+                    console.error('Error setting username:', error);
+                    addSystemMessage("Failed to change username due to a network error. Please try again.");
+                });
+            }
+            
             // Change username button
             changeUsername.addEventListener('click', () => {
-                // Fetch current user info to prefill the input
+                // Always fetch the latest user info before showing the modal
                 fetch('/get_current_user')
                     .then(response => response.json())
                     .then(data => {
+                        currentUserId = data.user_id;
+                        currentUsername = data.username;
                         usernameInput.value = data.username || '';
                         usernameModal.style.display = 'flex';
                     })
                     .catch(error => {
                         console.error('Error fetching user info:', error);
+                        // Use the cached user info if available
+                        if (currentUsername) {
+                            usernameInput.value = currentUsername;
+                        }
                         usernameModal.style.display = 'flex';
                     });
             });
@@ -392,10 +429,14 @@
             socket.on('current_user', (user) => {
                 currentUserId = user.user_id;
                 currentUsername = user.username;
+                userInitialized = true;
                 console.log('Current user ID:', currentUserId);
                 
                 // Initialize encryption after we have the user ID
                 initializeEncryption();
+                
+                // Show welcome message
+                addSystemMessage(`Welcome, ${currentUsername}! You can change your username by clicking the "Change Username" button.`);
             });
             
             // Connect to socket and get message history

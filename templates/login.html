@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Encrypted Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .login-container {
+            max-width: 400px;
+            width: 90%;
+            padding: 30px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #4a90e2;
+            margin-bottom: 10px;
+        }
+        .encryption-status {
+            background-color: #27ae60;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        .error-message {
+            color: #e74c3c;
+            font-size: 14px;
+            margin-top: 5px;
+            display: none;
+        }
+        .login-button {
+            width: 100%;
+            padding: 12px;
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .login-button:hover {
+            background-color: #3a80d2;
+        }
+        .register-link {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        .register-link a {
+            color: #4a90e2;
+            text-decoration: none;
+        }
+        .register-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="header">
+            <h1>Encrypted Chat</h1>
+            <p>Login to continue your secure conversations</p>
+            <div class="encryption-status">
+                <span>🔒</span>
+                <span>End-to-End Encrypted</span>
+            </div>
+        </div>
+        
+        <form id="login-form">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" placeholder="Enter your username" required>
+                <div class="error-message" id="username-error">Invalid username</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="Enter your password" required>
+                <div class="error-message" id="password-error">Invalid password</div>
+            </div>
+            
+            <button type="submit" class="login-button">Login</button>
+            
+            <div class="register-link">
+                Don't have an account? <a href="/register">Register here</a>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const loginForm = document.getElementById('login-form');
+            const usernameError = document.getElementById('username-error');
+            const passwordError = document.getElementById('password-error');
+            
+            loginForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                // Reset error messages
+                usernameError.style.display = 'none';
+                passwordError.style.display = 'none';
+                
+                const username = document.getElementById('username').value.trim();
+                const password = document.getElementById('password').value;
+                
+                if (!username) {
+                    usernameError.textContent = 'Username is required';
+                    usernameError.style.display = 'block';
+                    return;
+                }
+                
+                if (!password) {
+                    passwordError.textContent = 'Password is required';
+                    passwordError.style.display = 'block';
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ username, password }),
+                        credentials: 'same-origin'
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // Redirect to chat page on successful login
+                        window.location.href = '/chat';
+                    } else {
+                        // Show error message
+                        if (data.error === 'user_not_found') {
+                            usernameError.textContent = 'Username not found';
+                            usernameError.style.display = 'block';
+                        } else if (data.error === 'invalid_password') {
+                            passwordError.textContent = 'Incorrect password';
+                            passwordError.style.display = 'block';
+                        } else {
+                            alert('Login failed: ' + (data.message || 'Unknown error'));
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error during login:', error);
+                    alert('Login failed due to a network error. Please try again.');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

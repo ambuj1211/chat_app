@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App (Encrypted)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='emoji-picker.css') }}">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+        }
+        .header {
+            padding: 15px;
+            background-color: #4a90e2;
+            color: white;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-controls {
+            display: flex;
+            gap: 10px;
+        }
+        .encryption-status {
+            background-color: #27ae60;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .encryption-icon {
+            font-size: 1.2em;
+        }
+        .chat-area {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            max-width: 80%;
+            position: relative;
+        }
+        .message.own {
+            background-color: #dcf8c6;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+        .message.other {
+            background-color: #f1f0f0;
+            align-self: flex-start;
+        }
+        .message .username {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .message .time {
+            font-size: 0.7em;
+            color: #888;
+            text-align: right;
+        }
+        .message .reply-info {
+            font-size: 0.8em;
+            color: #4a90e2;
+            margin-bottom: 5px;
+            padding: 5px;
+            background-color: rgba(74, 144, 226, 0.1);
+            border-left: 3px solid #4a90e2;
+        }
+        .message .encrypted-badge {
+            font-size: 0.7em;
+            color: #27ae60;
+            margin-left: 5px;
+        }
+        .input-area {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            border-top: 1px solid #eee;
+        }
+        .reply-preview {
+            padding: 5px 10px;
+            background-color: #f1f0f0;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            display: none;
+        }
+        .reply-preview.active {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .cancel-reply {
+            background: none;
+            border: none;
+            color: #888;
+            cursor: pointer;
+        }
+        .message-input-container {
+            display: flex;
+        }
+        #message-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: none;
+            height: 40px;
+        }
+        .emoji-toggle-button {
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0 10px;
+        }
+        .send-button {
+            padding: 10px 15px;
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+        .message-actions {
+            display: none;
+            position: absolute;
+            right: 10px;
+            top: 10px;
+        }
+        .message:hover .message-actions {
+            display: block;
+        }
+        .reply-button {
+            background: none;
+            border: none;
+            color: #4a90e2;
+            cursor: pointer;
+            font-size: 0.8em;
+            padding: 2px 5px;
+        }
+        .username-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .username-modal-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            width: 300px;
+        }
+        .username-input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .username-submit {
+            padding: 10px 15px;
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .system-message {
+            text-align: center;
+            margin: 10px 0;
+            font-size: 0.8em;
+            color: #888;
+            font-style: italic;
+        }
+        .decryption-failed {
+            color: #e74c3c;
+            font-style: italic;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Encrypted Chat</h1>
+            <div class="header-controls">
+                <div class="encryption-status" id="encryption-status">
+                    <span class="encryption-icon">🔒</span>
+                    <span>End-to-End Encrypted</span>
+                </div>
+                <button id="change-username">Change Username</button>
+            </div>
+        </div>
+        <div class="chat-area" id="chat-area">
+            <!-- System message will be displayed here when encryption is ready -->
+            <div class="system-message">Initializing encryption... Please wait.</div>
+        </div>
+        <div class="input-area">
+            <div class="reply-preview" id="reply-preview">
+                <span id="reply-text"></span>
+                <button class="cancel-reply" id="cancel-reply">✕</button>
+            </div>
+            <div class="message-input-container">
+                <button class="emoji-toggle-button" id="emoji-button">😊</button>
+                <textarea id="message-input" placeholder="Type your message..." disabled></textarea>
+                <button class="send-button" id="send-button" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="username-modal" id="username-modal">
+        <div class="username-modal-content">
+            <h2>Set Your Username</h2>
+            <input type="text" id="username-input" class="username-input" placeholder="Enter your username" value="{{ username }}">
+            <button id="username-submit" class="username-submit">Save</button>
+        </div>
+    </div>
+
+    <!-- Load encryption utilities -->
+    <script src="{{ url_for('static', filename='encryption-utils.js') }}"></script>
+    
+    <!-- Load our custom emoji picker script -->
+    <script src="{{ url_for('static', filename='emoji-picker.js') }}"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const socket = io();
+            let replyingTo = null;
+            let currentUserId = null;
+            let currentUsername = null;
+            let encryptionReady = false;
+            let processedMessageIds = new Set(); // Track processed message IDs to prevent duplicates
+            
+            // Initialize encryption
+            const encryption = new ChatEncryption();
+            
+            // DOM Elements
+            const chatArea = document.getElementById('chat-area');
+            const messageInput = document.getElementById('message-input');
+            const sendButton = document.getElementById('send-button');
+            const emojiButton = document.getElementById('emoji-button');
+            const replyPreview = document.getElementById('reply-preview');
+            const replyText = document.getElementById('reply-text');
+            const cancelReply = document.getElementById('cancel-reply');
+            const usernameModal = document.getElementById('username-modal');
+            const usernameInput = document.getElementById('username-input');
+            const usernameSubmit = document.getElementById('username-submit');
+            const changeUsername = document.getElementById('change-username');
+            const encryptionStatus = document.getElementById('encryption-status');
+            
+            // Initialize our custom emoji picker
+            const emojiPicker = new EmojiPicker(emojiButton, messageInput);
+            
+            // Initially, don't show username modal
+            usernameModal.style.display = 'none';
+            
+            // Initialize encryption for the current user
+            async function initializeEncryption() {
+                try {
+                    if (!currentUserId) {
+                        console.log("Waiting for user ID before initializing encryption...");
+                        setTimeout(initializeEncryption, 500);
+                        return;
+                    }
+                    
+                    console.log("Initializing encryption for user:", currentUserId);
+                    
+                    // Generate key pair
+                    const publicKey = await encryption.generateKeyPair();
+                    console.log("Generated key pair successfully");
+                    
+                    // Register public key with server
+                    const registerResponse = await fetch('/register_public_key', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ publicKey }),
+                        credentials: 'same-origin'
+                    });
+                    
+                    const registerResult = await registerResponse.json();
+                    if (!registerResult.success) {
+                        console.error("Failed to register public key with server");
+                        throw new Error("Failed to register public key");
+                    }
+                    
+                    console.log("Registered public key with server");
+                    
+                    // Add our own public key to our key store
+                    await encryption.addUserPublicKey(currentUserId, publicKey);
+                    
+                    // Get existing public keys
+                    const response = await fetch('/get_public_keys');
+                    const publicKeys = await response.json();
+                    
+                    // Import all public keys
+                    for (const [userId, key] of Object.entries(publicKeys)) {
+                        if (userId !== currentUserId) {
+                            console.log(`Importing public key for user ${userId}`);
+                            await encryption.addUserPublicKey(userId, key);
+                        }
+                    }
+                    
+                    // Enable the message input
+                    messageInput.disabled = false;
+                    sendButton.disabled = false;
+                    
+                    // Add system message
+                    addSystemMessage("End-to-end encryption is now active. Your messages are secure.");
+                    
+                    encryptionReady = true;
+                } catch (error) {
+                    console.error('Error initializing encryption:', error);
+                    encryptionStatus.style.backgroundColor = '#e74c3c';
+                    encryptionStatus.querySelector('span:last-child').textContent = 'Encryption Failed';
+                    addSystemMessage("Failed to initialize encryption. Chat is not secure.");
+                }
+            }
+            
+            // Set username
+            usernameSubmit.addEventListener('click', () => {
+                const username = usernameInput.value.trim();
+                if (username) {
+                    fetch('/set_username', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ username }),
+                        credentials: 'same-origin'
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            usernameModal.style.display = 'none';
+                            currentUsername = username;
+                            console.log('Username changed successfully');
+                        } else {
+                            console.error('Failed to change username');
+                        }
+                    })
+                    .catch(error => console.error('Error setting username:', error));
+                }
+            });
+            
+            // Change username button
+            changeUsername.addEventListener('click', () => {
+                // Fetch current user info to prefill the input
+                fetch('/get_current_user')
+                    .then(response => response.json())
+                    .then(data => {
+                        usernameInput.value = data.username || '';
+                        usernameModal.style.display = 'flex';
+                    })
+                    .catch(error => {
+                        console.error('Error fetching user info:', error);
+                        usernameModal.style.display = 'flex';
+                    });
+            });
+            
+            // Get current user info
+            socket.on('current_user', (user) => {
+                currentUserId = user.user_id;
+                currentUsername = user.username;
+                console.log('Current user ID:', currentUserId);
+                
+                // Initialize encryption after we have the user ID
+                initializeEncryption();
+            });
+            
+            // Connect to socket and get message history
+            socket.on('message_history', (messages) => {
+                chatArea.innerHTML = '';
+                processedMessageIds.clear(); // Clear the set when receiving full history
+                
+                messages.forEach(message => {
+                    processedMessageIds.add(message.id); // Add to processed set
+                    addMessageToChat(message);
+                });
+                scrollToBottom();
+            });
+            
+            // New message received
+            socket.on('new_message', (message) => {
+                // Check if we've already processed this message
+                if (!processedMessageIds.has(message.id)) {
+                    processedMessageIds.add(message.id);
+                    console.log('New message received:', message.id);
+                    addMessageToChat(message);
+                    scrollToBottom();
+                } else {
+                    console.log('Duplicate message ignored:', message.id);
+                }
+            });
+            
+            // User connected
+            socket.on('user_connected', (user) => {
+                if (user.user_id !== currentUserId) {
+                    addSystemMessage(`${user.username} has joined the chat.`);
+                }
+            });
+            
+            // User disconnected
+            socket.on('user_disconnected', (user) => {
+                addSystemMessage(`${user.username} has left the chat.`);
+            });
+            
+            // Received a new public key
+            socket.on('user_public_key', async (data) => {
+                if (data.user_id !== currentUserId) {
+                    await encryption.addUserPublicKey(data.user_id, data.publicKey);
+                }
+            });
+            
+            // Received all public keys
+            socket.on('all_public_keys', async (publicKeys) => {
+                for (const [userId, key] of Object.entries(publicKeys)) {
+                    if (userId !== currentUserId) {
+                        await encryption.addUserPublicKey(userId, key);
+                    }
+                }
+            });
+            
+            // Send message
+            sendButton.addEventListener('click', sendEncryptedMessage);
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendEncryptedMessage();
+                }
+            });
+            
+            // Cancel reply
+            cancelReply.addEventListener('click', () => {
+                replyingTo = null;
+                replyPreview.classList.remove('active');
+            });
+            
+            // Functions
+            async function sendEncryptedMessage() {
+                const text = messageInput.value.trim();
+                if (!text || !encryptionReady) return;
+
+                try {
+                    // Disable send button to prevent double-clicks
+                    sendButton.disabled = true;
+                    
+                    // Get all public keys for encryption
+                    const response = await fetch('/get_public_keys');
+                    const publicKeys = await response.json();
+
+                    // Encrypt message for each recipient
+                    const recipients = {};
+
+                    // Make sure we have our own public key in our records
+                    if (!encryption.publicKeys[currentUserId]) {
+                        await encryption.addUserPublicKey(currentUserId, publicKeys[currentUserId]);
+                    }
+
+                    // First encrypt for ourselves
+                    recipients[currentUserId] = await encryption.encryptMessage(text, currentUserId);
+
+                    // Then encrypt for everyone else
+                    for (const userId of Object.keys(publicKeys)) {
+                        if (userId !== currentUserId) {
+                            // Make sure we have imported this user's public key
+                            if (!encryption.publicKeys[userId] && publicKeys[userId]) {
+                                await encryption.addUserPublicKey(userId, publicKeys[userId]);
+                            }
+
+                            if (encryption.publicKeys[userId]) {
+                                recipients[userId] = await encryption.encryptMessage(text, userId);
+                            }
+                        }
+                    }
+
+                    const messageData = {
+                        recipients: recipients,
+                    };
+
+                    if (replyingTo) {
+                        messageData.replyTo = replyingTo;
+                    }
+
+                    socket.emit('send_message', messageData);
+                    messageInput.value = '';
+
+                    // Reset reply
+                    if (replyingTo) {
+                        replyingTo = null;
+                        replyPreview.classList.remove('active');
+                    }
+                } catch (error) {
+                    console.error('Error sending encrypted message:', error);
+                    addSystemMessage("Failed to send encrypted message. Please try again.");
+                } finally {
+                    // Re-enable send button after message is sent or if there was an error
+                    setTimeout(() => {
+                        sendButton.disabled = false;
+                        messageInput.focus();
+                    }, 300); // Small delay to prevent accidental double-sends
+                }
+            }
+
+            async function addMessageToChat(message) {
+                const messageElement = document.createElement('div');
+                messageElement.classList.add('message');
+                messageElement.dataset.id = message.id;
+                messageElement.dataset.userId = message.user_id;
+
+                // Check if the message is from the current user
+                const isOwnMessage = message.user_id === currentUserId;
+                messageElement.classList.add(isOwnMessage ? 'own' : 'other');
+
+                let messageHTML = `
+                    <div class="username">${message.username}
+                    <span class="encrypted-badge">🔒 Encrypted</span>
+                    </div>
+                `;
+                
+                // Add reply info if this message is replying to another
+                if (message.replyTo) {
+                    const replyToMessage = findMessageById(message.replyTo);
+                    if (replyToMessage) {
+                        messageHTML += `
+                            <div class="reply-info">
+                                Reply to ${replyToMessage.username}: ${replyToMessage.text.substring(0, 30)}${replyToMessage.text.length > 30 ? '...' : ''}
+                            </div>
+                        `;
+                    }
+                }
+
+                // Handle encrypted messages
+                if (message.encrypted && message.recipients) {
+                    let decryptedText = "";
+
+                    // Try to decrypt the message if it's meant for us
+                    if (message.recipients[currentUserId]) {
+                        try {
+                            // Make sure we have our encryption system initialized
+                            if (!encryption.keyPair) {
+                                decryptedText = "[Waiting for encryption keys...]";
+                            } else {
+                                decryptedText = await encryption.decryptMessage(message.recipients[currentUserId]);
+                                console.log('Message decrypted successfully');
+                            }
+                        } catch (error) {
+                            console.error('Error decrypting message:', error);
+                            decryptedText = "[Could not decrypt this message]";
+                        }
+                    } else {
+                        decryptedText = "[This message was not encrypted for you]";
+                    }
+
+                    // Store the decrypted text for potential reply previews
+                    messageElement.dataset.text = decryptedText;
+
+                    // Check if decryption failed
+                    const decryptionFailed = decryptedText.startsWith("[");
+
+                    if (decryptionFailed) {
+                        messageHTML += `
+                            <div class="message-text decryption-failed">${decryptedText}</div>
+                        `;
+                    } else {
+                        messageHTML += `
+                            <div class="message-text">${decryptedText}</div>
+                        `;
+                    }
+                } else {
+                    // Unencrypted message (legacy or system)
+                    const text = message.text || "[No message content]";
+                    messageElement.dataset.text = text;
+                    messageHTML += `
+                        <div class="message-text">${text}</div>
+                    `;
+                }
+
+                messageHTML += `
+                    <div class="time">${message.timestamp}</div>
+                    <div class="message-actions">
+                        <button class="reply-button" data-id="${message.id}">Reply</button>
+                    </div>
+                `;
+                
+                messageElement.innerHTML = messageHTML;
+                chatArea.appendChild(messageElement);
+                
+                // Add reply button event listener
+                const replyButton = messageElement.querySelector('.reply-button');
+                replyButton.addEventListener('click', () => {
+                    replyingTo = message.id;
+                    const messageText = messageElement.dataset.text || "Message";
+                    replyText.textContent = `Replying to ${message.username}: ${messageText.substring(0, 30)}${messageText.length > 30 ? '...' : ''}`;
+                    replyPreview.classList.add('active');
+                    messageInput.focus();
+                });
+            }
+            
+            function addSystemMessage(text) {
+                const systemMessage = document.createElement('div');
+                systemMessage.className = 'system-message';
+                systemMessage.textContent = text;
+                chatArea.appendChild(systemMessage);
+                scrollToBottom();
+            }
+            
+            function findMessageById(id) {
+                const messageElement = document.querySelector(`.message[data-id="${id}"]`);
+                if (messageElement) {
+                    const username = messageElement.querySelector('.username').textContent.replace('🔒 Encrypted', '').trim();
+                    const text = messageElement.dataset.text || "Unknown message";
+                    return { username, text };
+                }
+                return null;
+            }
+            
+            function scrollToBottom() {
+                chatArea.scrollTop = chatArea.scrollHeight;
+            }
+        });
+    </script>
+</body>
+</html>
